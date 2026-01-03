@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@nuxt/devtools": "latest",
+    "@types/node": "^25.0.3",
     "typescript": "latest"
   },
   "packageManager": "pnpm@10.24.0"

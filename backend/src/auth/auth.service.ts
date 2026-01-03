@@ -10,7 +10,6 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
 import { RefreshToken } from './entities/refresh-token.entity';
-import { User } from '../users/entities/user.entity';
 
 @Injectable()
 export class AuthService {
@@ -22,7 +21,10 @@ export class AuthService {
     private readonly configService: ConfigService,
   ) {}
 
-  async register(email: string, password: string): Promise<{
+  async register(
+    email: string,
+    password: string,
+  ): Promise<{
     id: string;
     email: string;
     created_at: Date;
