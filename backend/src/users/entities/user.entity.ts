@@ -9,6 +9,7 @@ import {
   OneToMany,
 } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import { RefreshToken } from '../../auth/entities/refresh-token.entity';
 
 @Entity('users')
 export class User {
@@ -27,8 +28,8 @@ export class User {
   @UpdateDateColumn()
   updated_at: Date;
 
-  @OneToMany('RefreshToken', 'user')
-  refresh_tokens: any[];
+  @OneToMany(() => RefreshToken, (refreshToken) => refreshToken.user)
+  refresh_tokens: RefreshToken[];
 
   @BeforeInsert()
   @BeforeUpdate()

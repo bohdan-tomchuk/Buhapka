@@ -5,6 +5,7 @@ import {
   IsDateString,
   IsString,
   IsOptional,
+  IsUUID,
   Min,
 } from 'class-validator';
 import { Currency } from '../../common/enums/currency.enum';
@@ -45,4 +46,8 @@ export class CreateExpenseDto {
   @IsNotEmpty()
   @IsString()
   description: string;
+
+  @IsOptional()
+  @IsUUID()
+  parent_expense_id?: string;
 }

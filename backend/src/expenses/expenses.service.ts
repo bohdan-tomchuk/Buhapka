@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Expense } from './entities/expense.entity';
@@ -17,6 +21,7 @@ export class ExpensesService {
   async create(
     createExpenseDto: CreateExpenseDto,
     userId: string,
+    receiptId?: string | null,
   ): Promise<Expense> {
     const {
       amount,
@@ -27,7 +32,19 @@ export class ExpensesService {
       source,
       category,
       description,
+      parent_expense_id,
     } = createExpenseDto;
+
+    if (parent_expense_id) {
+      const parentExpense = await this.expenseRepository.findOne({
+        where: { id: parent_expense_id, user_id: userId },
+      });
+      if (!parentExpense) {
+        throw new NotFoundException(
+          `Parent expense with ID ${parent_expense_id} not found`,
+        );
+      }
+    }
 
     let amountUah: number;
     let finalExchangeRate: number | null = null;
@@ -37,7 +54,9 @@ export class ExpensesService {
       amountUah = amount;
     } else {
       if (!exchange_rate) {
-        throw new Error('Exchange rate is required for non-UAH currencies');
+        throw new BadRequestException(
+          'Exchange rate is required for non-UAH currencies',
+        );
       }
       amountUah = amount * exchange_rate;
       finalExchangeRate = exchange_rate;
@@ -55,6 +74,8 @@ export class ExpensesService {
       source,
       category,
       description,
+      parent_expense_id: parent_expense_id || null,
+      receipt_id: receiptId || null,
     });
 
     return this.expenseRepository.save(expense);
@@ -75,7 +96,10 @@ export class ExpensesService {
 
     const queryBuilder = this.expenseRepository
       .createQueryBuilder('expense')
-      .where('expense.user_id = :userId', { userId });
+      .leftJoinAndSelect('expense.children', 'children')
+      .leftJoinAndSelect('children.children', 'grandchildren')
+      .where('expense.user_id = :userId', { userId })
+      .andWhere('expense.parent_expense_id IS NULL');
 
     if (dateFrom) {
       queryBuilder.andWhere('expense.date >= :dateFrom', { dateFrom });
@@ -110,6 +134,7 @@ export class ExpensesService {
   async findOne(id: string, userId: string): Promise<Expense> {
     const expense = await this.expenseRepository.findOne({
       where: { id, user_id: userId },
+      relations: ['children', 'children.children'],
     });
 
     if (!expense) {
@@ -119,6 +144,42 @@ export class ExpensesService {
     return expense;
   }
 
+  async getExpenseWithChildren(id: string, userId: string): Promise<Expense> {
+    const expense = await this.expenseRepository.findOne({
+      where: { id, user_id: userId },
+      relations: ['children', 'children.children', 'children.children.children'],
+    });
+
+    if (!expense) {
+      throw new NotFoundException(`Expense with ID ${id} not found`);
+    }
+
+    return expense;
+  }
+
+  async createChildExpense(
+    parentId: string,
+    createExpenseDto: CreateExpenseDto,
+    userId: string,
+  ): Promise<Expense> {
+    const parentExpense = await this.expenseRepository.findOne({
+      where: { id: parentId, user_id: userId },
+    });
+
+    if (!parentExpense) {
+      throw new NotFoundException(
+        `Parent expense with ID ${parentId} not found`,
+      );
+    }
+
+    const childExpenseDto = {
+      ...createExpenseDto,
+      parent_expense_id: parentId,
+    };
+
+    return this.create(childExpenseDto, userId);
+  }
+
   async update(
     id: string,
     updateExpenseDto: UpdateExpenseDto,
@@ -126,15 +187,30 @@ export class ExpensesService {
   ): Promise<Expense> {
     const expense = await this.findOne(id, userId);
 
+    const {
+      amount,
+      currency,
+      exchange_rate,
+      rate_date,
+      date,
+      source,
+      category,
+      description,
+    } = updateExpenseDto;
+
     if (
-      updateExpenseDto.amount !== undefined ||
-      updateExpenseDto.currency !== undefined ||
-      updateExpenseDto.exchange_rate !== undefined
+      amount !== undefined ||
+      currency !== undefined ||
+      exchange_rate !== undefined
     ) {
-      const finalAmount = updateExpenseDto.amount ?? expense.amount;
-      const finalCurrency = updateExpenseDto.currency ?? expense.currency;
-      const finalExchangeRate =
-        updateExpenseDto.exchange_rate ?? expense.exchange_rate;
+      const finalAmount: number =
+        amount !== undefined ? (amount as number) : expense.amount;
+      const finalCurrency: Currency =
+        currency !== undefined ? (currency as Currency) : expense.currency;
+      const finalExchangeRate: number | null =
+        exchange_rate !== undefined
+          ? (exchange_rate as number)
+          : expense.exchange_rate;
 
       if (finalCurrency === Currency.UAH) {
         expense.amount_uah = finalAmount;
@@ -142,32 +218,36 @@ export class ExpensesService {
         expense.rate_date = null;
       } else {
         if (!finalExchangeRate) {
-          throw new Error('Exchange rate is required for non-UAH currencies');
+          throw new BadRequestException(
+            'Exchange rate is required for non-UAH currencies',
+          );
         }
         expense.amount_uah = finalAmount * finalExchangeRate;
         expense.exchange_rate = finalExchangeRate;
-        expense.rate_date = updateExpenseDto.rate_date
-          ? new Date(updateExpenseDto.rate_date)
-          : expense.rate_date;
+        if (rate_date !== undefined) {
+          expense.rate_date = new Date(rate_date as string);
+        }
       }
 
-      if (updateExpenseDto.amount !== undefined)
-        expense.amount = updateExpenseDto.amount;
-      if (updateExpenseDto.currency !== undefined)
-        expense.currency = updateExpenseDto.currency;
+      if (amount !== undefined) {
+        expense.amount = amount as number;
+      }
+      if (currency !== undefined) {
+        expense.currency = currency as Currency;
+      }
     }
 
-    if (updateExpenseDto.date !== undefined) {
-      expense.date = new Date(updateExpenseDto.date);
+    if (date !== undefined) {
+      expense.date = new Date(date as string);
     }
-    if (updateExpenseDto.source !== undefined) {
-      expense.source = updateExpenseDto.source;
+    if (source !== undefined) {
+      expense.source = source as typeof expense.source;
     }
-    if (updateExpenseDto.category !== undefined) {
-      expense.category = updateExpenseDto.category;
+    if (category !== undefined) {
+      expense.category = category as typeof expense.category;
     }
-    if (updateExpenseDto.description !== undefined) {
-      expense.description = updateExpenseDto.description;
+    if (description !== undefined) {
+      expense.description = description as string;
     }
 
     return this.expenseRepository.save(expense);

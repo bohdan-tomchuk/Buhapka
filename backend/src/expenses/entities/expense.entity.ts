@@ -5,12 +5,14 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
+  OneToMany,
   JoinColumn,
 } from 'typeorm';
 import { Currency } from '../../common/enums/currency.enum';
 import { Source } from '../../common/enums/source.enum';
 import { Category } from '../../common/enums/category.enum';
 import { User } from '../../users/entities/user.entity';
+import { Receipt } from '../../receipts/entities/receipt.entity';
 
 @Entity('expenses')
 export class Expense {
@@ -50,6 +52,23 @@ export class Expense {
 
   @Column()
   user_id: string;
+
+  @ManyToOne(() => Expense, { nullable: true })
+  @JoinColumn({ name: 'parent_expense_id' })
+  parent_expense: Expense;
+
+  @Column({ nullable: true })
+  parent_expense_id: string | null;
+
+  @OneToMany(() => Expense, (expense) => expense.parent_expense)
+  children: Expense[];
+
+  @ManyToOne(() => Receipt, { nullable: true })
+  @JoinColumn({ name: 'receipt_id' })
+  receipt: Receipt;
+
+  @Column({ nullable: true })
+  receipt_id: string | null;
 
   @CreateDateColumn()
   created_at: Date;
