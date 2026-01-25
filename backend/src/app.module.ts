@@ -7,6 +7,7 @@ import { getDatabaseConfig } from './config/database.config';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { ExpensesModule } from './expenses/expenses.module';
+import { ReceiptsModule } from './receipts/receipts.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ExpensesModule } from './expenses/expenses.module';
     UsersModule,
     AuthModule,
     ExpensesModule,
+    ReceiptsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
