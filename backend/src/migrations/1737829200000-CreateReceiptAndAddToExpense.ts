@@ -73,11 +73,13 @@ export class CreateReceiptAndAddToExpense1737829200000 implements MigrationInter
 
     // Drop foreign key
     const table = await queryRunner.getTable('expenses');
-    const foreignKey = table.foreignKeys.find(
-      (fk) => fk.columnNames.indexOf('receipt_id') !== -1,
-    );
-    if (foreignKey) {
-      await queryRunner.dropForeignKey('expenses', foreignKey);
+    if (table) {
+      const foreignKey = table.foreignKeys.find(
+        (fk) => fk.columnNames.indexOf('receipt_id') !== -1,
+      );
+      if (foreignKey) {
+        await queryRunner.dropForeignKey('expenses', foreignKey);
+      }
     }
 
     // Drop receipt_id column

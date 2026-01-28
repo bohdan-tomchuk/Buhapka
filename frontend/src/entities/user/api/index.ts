@@ -1,27 +1,56 @@
-import apiClient from '../../../shared/api/base'
-import type { User, LoginCredentials, AuthResponse } from '../../../shared/types'
+/**
+ * User & Auth API
+ *
+ * API functions for authentication operations.
+ * Uses cookie-based authentication (httpOnly tokens managed by backend).
+ */
 
-export async function loginApi(credentials: LoginCredentials): Promise<AuthResponse> {
-  return await apiClient('/auth/login', {
-    method: 'POST',
-    body: credentials,
-  })
+import { useApi } from '../../../shared/api/base';
+import type { LoginCredentials } from '../../../shared/types';
+
+/**
+ * Login user with credentials
+ * Backend sets httpOnly cookies for access_token and refresh_token
+ */
+export async function loginApi(credentials: LoginCredentials): Promise<{ message: string }> {
+  const api = useApi();
+  return await api.post<{ message: string }>('/api/auth/login', credentials);
 }
 
-export async function logoutApi(): Promise<void> {
-  await apiClient('/auth/logout', {
-    method: 'POST',
-  })
+/**
+ * Logout user
+ * Backend clears httpOnly cookies
+ */
+export async function logoutApi(): Promise<{ message: string }> {
+  const api = useApi();
+  return await api.post<{ message: string }>('/api/auth/logout');
 }
 
-export async function refreshApi(): Promise<AuthResponse> {
-  return await apiClient('/auth/refresh', {
-    method: 'POST',
-  })
+/**
+ * Refresh access token
+ * Uses httpOnly refresh_token cookie automatically
+ * Backend sets new access_token cookie
+ */
+export async function refreshApi(): Promise<{ message: string }> {
+  const api = useApi();
+  return await api.post<{ message: string }>('/api/auth/refresh');
 }
 
-export async function getCurrentUser(): Promise<User> {
-  return await apiClient('/auth/me', {
-    method: 'GET',
-  })
+/**
+ * Check if user is authenticated
+ * Makes a test request to a protected endpoint to verify cookies are valid
+ */
+export async function checkAuthApi(): Promise<boolean> {
+  try {
+    const api = useApi();
+    // Make a HEAD request to expenses endpoint (protected route)
+    // This will trigger token refresh if needed
+    await api.request('/api/expenses', {
+      method: 'HEAD',
+      skipErrorToast: true, // Don't show error toast for auth checks
+    });
+    return true;
+  } catch (error) {
+    return false;
+  }
 }

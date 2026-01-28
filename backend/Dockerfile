@@ -48,6 +48,9 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
+# Install wget for health checks
+RUN apk add --no-cache wget
+
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 

@@ -6,7 +6,7 @@ import {
   Res,
   StreamableFile,
 } from '@nestjs/common';
-import { Response } from 'express';
+import type { Response } from 'express';
 import { ReceiptsService } from './receipts.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';

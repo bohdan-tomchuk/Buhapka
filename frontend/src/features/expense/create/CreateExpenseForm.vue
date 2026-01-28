@@ -3,6 +3,8 @@ import { ref, computed, watch } from 'vue'
 import { Currency, Category, Source } from '../../../shared/types'
 import type { CreateExpenseDto } from '../../../entities/expense/model/store'
 import { useExpenseStore } from '../../../entities/expense/model/store'
+import { useCurrencyStore, CurrencyDisplay } from '../../../entities/currency'
+import { useToast } from '../../../shared/ui/toast'
 import Input from '../../../shared/ui/input/Input.vue'
 import Select from '../../../shared/ui/select/Select.vue'
 import Button from '../../../shared/ui/button/Button.vue'
@@ -24,6 +26,8 @@ const emit = defineEmits<{
 }>()
 
 const expenseStore = useExpenseStore()
+const currencyStore = useCurrencyStore()
+const toast = useToast()
 
 const formData = ref<CreateExpenseDto>({
   amount: 0,
@@ -39,6 +43,10 @@ const formData = ref<CreateExpenseDto>({
 
 const receiptFile = ref<File | null>(null)
 const validationErrors = ref<Record<string, string>>({})
+const fetchedRate = ref<number | null>(null)
+const fetchedRateDate = ref<string | null>(null)
+const isLoadingRate = ref(false)
+const rateError = ref<string | null>(null)
 
 const currencyOptions = [
   { label: 'UAH', value: Currency.UAH },
@@ -61,13 +69,51 @@ const categoryOptions = [
 
 const isForeignCurrency = computed(() => formData.value.currency !== Currency.UAH)
 
-// Watch currency changes to clear exchange rate when switching to UAH
-watch(() => formData.value.currency, (newCurrency) => {
-  if (newCurrency === Currency.UAH) {
+// Computed property for UAH preview
+const uahPreview = computed(() => {
+  if (formData.value.currency === Currency.UAH) {
+    return formData.value.amount
+  }
+  if (fetchedRate.value && formData.value.amount) {
+    return formData.value.amount * fetchedRate.value
+  }
+  return 0
+})
+
+// Watch currency and date to automatically fetch exchange rate
+watch([() => formData.value.currency, () => formData.value.date], async ([currency, date]) => {
+  if (currency === Currency.UAH) {
     formData.value.exchange_rate = null
     formData.value.rate_date = null
+    fetchedRate.value = null
+    fetchedRateDate.value = null
+    rateError.value = null
+    return
   }
-})
+
+  if (!date) {
+    return
+  }
+
+  // Fetch exchange rate for foreign currency
+  isLoadingRate.value = true
+  rateError.value = null
+  try {
+    const rate = await currencyStore.getRateForDate(currency, date)
+    fetchedRate.value = rate.rate
+    fetchedRateDate.value = rate.date
+    formData.value.exchange_rate = rate.rate
+    formData.value.rate_date = rate.date
+  } catch (err: any) {
+    rateError.value = err.message || 'Failed to fetch exchange rate'
+    fetchedRate.value = null
+    fetchedRateDate.value = null
+    formData.value.exchange_rate = null
+    formData.value.rate_date = null
+  } finally {
+    isLoadingRate.value = false
+  }
+}, { immediate: true })
 
 const validateForm = (): boolean => {
   validationErrors.value = {}
@@ -89,7 +135,13 @@ const validateForm = (): boolean => {
   }
 
   if (isForeignCurrency.value && (!formData.value.exchange_rate || formData.value.exchange_rate <= 0)) {
-    validationErrors.value.exchange_rate = 'Exchange rate is required for foreign currency'
+    validationErrors.value.general = 'Exchange rate is required for foreign currency'
+    return false
+  }
+
+  if (rateError.value) {
+    validationErrors.value.general = rateError.value
+    return false
   }
 
   return Object.keys(validationErrors.value).length === 0
@@ -97,16 +149,21 @@ const validateForm = (): boolean => {
 
 const handleSubmit = async () => {
   if (!validateForm()) {
+    toast.error('Please fix the validation errors', 'Validation Failed')
     return
   }
 
   try {
     await expenseStore.createExpense(formData.value, receiptFile.value)
+    toast.success(
+      `Expense of ${formData.value.amount} ${formData.value.currency} created successfully`,
+      'Expense Created'
+    )
     emit('success')
     emit('close')
     resetForm()
   } catch (err: any) {
-    validationErrors.value.general = err.message || 'Failed to create expense'
+    toast.error(err.message || 'Failed to create expense', 'Error')
   }
 }
 
@@ -160,24 +217,30 @@ const handleClose = () => {
         </FormField>
       </div>
 
-      <div v-if="isForeignCurrency" class="grid grid-cols-2 gap-4">
-        <FormField label="Exchange Rate" :error="validationErrors.exchange_rate" required>
-          <Input
-            v-model.number="formData.exchange_rate"
-            type="number"
-            step="0.0001"
-            placeholder="0.0000"
-            :disabled="expenseStore.loading"
-            :error="validationErrors.exchange_rate"
-          />
-        </FormField>
+      <!-- UAH Preview and Exchange Rate Info for Foreign Currencies -->
+      <div v-if="isForeignCurrency" class="space-y-2">
+        <div v-if="isLoadingRate" class="flex items-center gap-2 text-sm text-gray-600">
+          <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span>Fetching exchange rate...</span>
+        </div>
 
-        <FormField label="Rate Date">
-          <DatePicker
-            v-model="formData.rate_date"
-            :disabled="expenseStore.loading"
+        <div v-else-if="rateError" class="p-3 rounded-md bg-red-50 border border-red-200 text-red-700 text-sm">
+          {{ rateError }}
+        </div>
+
+        <div v-else-if="fetchedRate && fetchedRateDate">
+          <div class="text-sm font-medium text-gray-700 mb-1">
+            Amount in UAH: ≈ {{ uahPreview.toFixed(2) }} UAH
+          </div>
+          <CurrencyDisplay
+            :currency="formData.currency"
+            :rate="fetchedRate"
+            :rate-date="fetchedRateDate"
           />
-        </FormField>
+        </div>
       </div>
 
       <FormField label="Date" :error="validationErrors.date" required>
@@ -229,9 +292,10 @@ const handleClose = () => {
         </Button>
         <Button
           type="submit"
-          :disabled="expenseStore.loading"
+          :loading="expenseStore.loading"
+          :disabled="isLoadingRate || !!rateError"
         >
-          {{ expenseStore.loading ? 'Creating...' : 'Create Expense' }}
+          Create Expense
         </Button>
       </div>
     </form>

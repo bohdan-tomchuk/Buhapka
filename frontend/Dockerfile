@@ -19,7 +19,7 @@ COPY . .
 EXPOSE 3000
 
 # Start development server
-CMD ["pnpm", "run", "dev", "--host", "0.0.0.0"]
+CMD ["pnpm", "run", "dev"]
 
 
 # Build stage
@@ -47,6 +47,9 @@ RUN pnpm run build
 FROM node:20-alpine AS production
 
 WORKDIR /app
+
+# Install wget for health checks
+RUN apk add --no-cache wget
 
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate

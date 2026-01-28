@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -10,12 +11,16 @@ import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { FilterExpenseDto } from './dto/filter-expense.dto';
 import { Currency } from '../common/enums/currency.enum';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 
 @Injectable()
 export class ExpensesService {
+  private readonly logger = new Logger(ExpensesService.name);
+
   constructor(
     @InjectRepository(Expense)
     private readonly expenseRepository: Repository<Expense>,
+    private readonly exchangeRatesService: ExchangeRatesService,
   ) {}
 
   async create(
@@ -26,8 +31,6 @@ export class ExpensesService {
     const {
       amount,
       currency,
-      exchange_rate,
-      rate_date,
       date,
       source,
       category,
@@ -52,15 +55,27 @@ export class ExpensesService {
 
     if (currency === Currency.UAH) {
       amountUah = amount;
+      this.logger.log(`Creating UAH expense, amount_uah = ${amountUah}`);
     } else {
-      if (!exchange_rate) {
+      try {
+        const expenseDate = new Date(date);
+        const rate = await this.exchangeRatesService.getRate(currency, expenseDate);
+        finalExchangeRate = rate.rate;
+        finalRateDate = rate.date;
+        amountUah = amount * finalExchangeRate;
+
+        this.logger.log(
+          `Fetched exchange rate for ${currency} on ${date}: ${finalExchangeRate} (source: ${rate.source}), amount_uah = ${amountUah}`,
+        );
+      } catch (error) {
+        this.logger.error(
+          `Failed to fetch exchange rate for ${currency} on ${date}:`,
+          error.message,
+        );
         throw new BadRequestException(
-          'Exchange rate is required for non-UAH currencies',
+          `Could not fetch exchange rate for ${currency} on ${date}`,
         );
       }
-      amountUah = amount * exchange_rate;
-      finalExchangeRate = exchange_rate;
-      finalRateDate = rate_date ? new Date(rate_date) : null;
     }
 
     const expense = this.expenseRepository.create({
@@ -180,6 +195,22 @@ export class ExpensesService {
     return this.create(childExpenseDto, userId);
   }
 
+  async findByDateRange(
+    dateFrom: Date,
+    dateTo: Date,
+    userId: string,
+  ): Promise<Expense[]> {
+    const queryBuilder = this.expenseRepository
+      .createQueryBuilder('expense')
+      .leftJoinAndSelect('expense.receipt', 'receipt')
+      .where('expense.user_id = :userId', { userId })
+      .andWhere('expense.date >= :dateFrom', { dateFrom })
+      .andWhere('expense.date <= :dateTo', { dateTo })
+      .orderBy('expense.date', 'ASC');
+
+    return queryBuilder.getMany();
+  }
+
   async update(
     id: string,
     updateExpenseDto: UpdateExpenseDto,
@@ -190,42 +221,58 @@ export class ExpensesService {
     const {
       amount,
       currency,
-      exchange_rate,
-      rate_date,
       date,
       source,
       category,
       description,
     } = updateExpenseDto;
 
-    if (
-      amount !== undefined ||
-      currency !== undefined ||
-      exchange_rate !== undefined
-    ) {
+    // Determine if we need to recalculate exchange rate
+    const currencyChanged = currency !== undefined && currency !== expense.currency;
+    const dateChanged = date !== undefined && date !== expense.date.toISOString().split('T')[0];
+    const amountChanged = amount !== undefined;
+
+    if (currencyChanged || dateChanged || amountChanged) {
       const finalAmount: number =
         amount !== undefined ? (amount as number) : expense.amount;
       const finalCurrency: Currency =
         currency !== undefined ? (currency as Currency) : expense.currency;
-      const finalExchangeRate: number | null =
-        exchange_rate !== undefined
-          ? (exchange_rate as number)
-          : expense.exchange_rate;
+      const finalDate = date !== undefined ? new Date(date as string) : expense.date;
 
       if (finalCurrency === Currency.UAH) {
         expense.amount_uah = finalAmount;
         expense.exchange_rate = null;
         expense.rate_date = null;
+        this.logger.log(`Updating to UAH expense, amount_uah = ${expense.amount_uah}`);
       } else {
-        if (!finalExchangeRate) {
-          throw new BadRequestException(
-            'Exchange rate is required for non-UAH currencies',
-          );
-        }
-        expense.amount_uah = finalAmount * finalExchangeRate;
-        expense.exchange_rate = finalExchangeRate;
-        if (rate_date !== undefined) {
-          expense.rate_date = new Date(rate_date as string);
+        // Fetch new rate if currency or date changed
+        if (currencyChanged || dateChanged) {
+          try {
+            const rate = await this.exchangeRatesService.getRate(finalCurrency, finalDate);
+            expense.exchange_rate = rate.rate;
+            expense.rate_date = rate.date;
+            expense.amount_uah = finalAmount * rate.rate;
+
+            this.logger.log(
+              `Fetched new exchange rate for ${finalCurrency} on ${finalDate.toISOString().split('T')[0]}: ${rate.rate} (source: ${rate.source})`,
+            );
+          } catch (error) {
+            this.logger.error(
+              `Failed to fetch exchange rate for ${finalCurrency} on ${finalDate.toISOString().split('T')[0]}:`,
+              error.message,
+            );
+            throw new BadRequestException(
+              `Could not fetch exchange rate for ${finalCurrency} on ${finalDate.toISOString().split('T')[0]}`,
+            );
+          }
+        } else {
+          // Just recalculate with existing rate
+          if (!expense.exchange_rate) {
+            throw new BadRequestException(
+              'Exchange rate is required for non-UAH currencies',
+            );
+          }
+          expense.amount_uah = finalAmount * expense.exchange_rate;
         }
       }
 

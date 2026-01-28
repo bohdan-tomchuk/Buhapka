@@ -68,3 +68,11 @@ export interface PaginatedExpenseResponse {
   page: number
   limit: number
 }
+
+export interface ExchangeRate {
+  id: string
+  currency: Currency
+  rate: number
+  date: string
+  source: string
+}

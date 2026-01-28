@@ -61,14 +61,12 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
-      - /app/.nuxt
     ports:
       - "3000:3000"
     depends_on:
       - backend
     networks:
       - buhapka-network
-    command: pnpm run dev -- --host 0.0.0.0
 
 volumes:
   postgres-data:

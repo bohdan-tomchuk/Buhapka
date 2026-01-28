@@ -2,7 +2,21 @@ export default defineNuxtConfig({
   compatibilityDate: '2024-04-03',
   devtools: { enabled: true },
 
-  srcDir: 'src',
+  srcDir: 'src/',
+
+  pages: true,
+
+  dir: {
+    layouts: 'app/layouts',
+    middleware: 'app/middleware',
+  },
+
+  components: [
+    { path: '~/shared/ui' },
+    { path: '~/entities' },
+    { path: '~/features' },
+    { path: '~/widgets' },
+  ],
 
   modules: [
     '@pinia/nuxt',
