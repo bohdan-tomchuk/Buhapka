@@ -5,7 +5,7 @@
  * Uses cookie-based authentication (httpOnly tokens managed by backend).
  */
 
-import { useApi } from '../../../shared/api/base';
+import useApi from '../../../shared/api/base';
 import type { LoginCredentials } from '../../../shared/types';
 
 /**
@@ -14,7 +14,13 @@ import type { LoginCredentials } from '../../../shared/types';
  */
 export async function loginApi(credentials: LoginCredentials): Promise<{ message: string }> {
   const api = useApi();
-  return await api.post<{ message: string }>('/api/auth/login', credentials);
+  return await api.request<{ message: string }>('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: credentials.email,
+      password: credentials.password,
+    }),
+  });
 }
 
 /**
@@ -23,7 +29,9 @@ export async function loginApi(credentials: LoginCredentials): Promise<{ message
  */
 export async function logoutApi(): Promise<{ message: string }> {
   const api = useApi();
-  return await api.post<{ message: string }>('/api/auth/logout');
+  return await api.request<{ message: string }>('/api/auth/logout', {
+    method: 'POST',
+  });
 }
 
 /**
@@ -33,7 +41,9 @@ export async function logoutApi(): Promise<{ message: string }> {
  */
 export async function refreshApi(): Promise<{ message: string }> {
   const api = useApi();
-  return await api.post<{ message: string }>('/api/auth/refresh');
+  return await api.request<{ message: string }>('/api/auth/refresh', {
+    method: 'POST',
+  });
 }
 
 /**
@@ -47,7 +57,6 @@ export async function checkAuthApi(): Promise<boolean> {
     // This will trigger token refresh if needed
     await api.request('/api/expenses', {
       method: 'HEAD',
-      skipErrorToast: true, // Don't show error toast for auth checks
     });
     return true;
   } catch (error) {

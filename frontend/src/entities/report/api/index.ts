@@ -4,7 +4,7 @@
  * API functions for generating expense reports (PDF).
  */
 
-import { useApi } from '../../../shared/api/base';
+import useApi from '../../../shared/api/base';
 
 export interface GenerateReportParams {
   dateFrom: string;
@@ -18,9 +18,11 @@ export interface GenerateReportParams {
 export async function generatePDF(params: GenerateReportParams): Promise<Blob> {
   const api = useApi();
 
-  return await api.post<Blob>(
-    '/api/reports/pdf',
-    params,
-    { responseType: 'blob' }
-  );
+  return await api.request<Blob>('/api/reports/pdf', {
+    method: 'POST',
+    body: JSON.stringify({
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+    }),
+  });
 }

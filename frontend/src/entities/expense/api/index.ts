@@ -4,7 +4,7 @@
  * API functions for expense CRUD operations and filtering.
  */
 
-import { useApi } from '../../../shared/api/base';
+import useApi from '../../../shared/api/base';
 import type { Expense, ExpenseFilters, PaginatedExpenseResponse } from '../../../shared/types';
 import type { CreateExpenseDto, UpdateExpenseDto } from '../model/store';
 
@@ -25,7 +25,7 @@ export async function fetchExpensesApi(filters?: ExpenseFilters): Promise<Pagina
   const queryString = params.toString();
   const url = queryString ? `/api/expenses?${queryString}` : '/api/expenses';
 
-  return await api.get<PaginatedExpenseResponse>(url);
+  return await api.request<PaginatedExpenseResponse>(`/api/expenses?${queryString}`);
 }
 
 /**
@@ -49,11 +49,17 @@ export async function createExpenseApi(expense: CreateExpenseDto, receiptFile?: 
     formData.append('receipt', receiptFile);
 
     // Send as multipart/form-data (browser sets Content-Type with boundary automatically)
-    return await api.post<Expense>('/api/expenses', formData);
+    return await api.request<Expense>('/api/expenses', {
+      method: 'POST',
+      body: formData,
+    });
   }
 
   // Send as JSON when no file
-  return await api.post<Expense>('/api/expenses', expense);
+  return await api.request<Expense>('/api/expenses', {
+    method: 'POST',
+    body: JSON.stringify(expense),
+  });
 }
 
 /**
@@ -61,7 +67,10 @@ export async function createExpenseApi(expense: CreateExpenseDto, receiptFile?: 
  */
 export async function updateExpenseApi(id: string, expense: UpdateExpenseDto): Promise<Expense> {
   const api = useApi();
-  return await api.patch<Expense>(`/api/expenses/${id}`, expense);
+  return await api.request<Expense>(`/api/expenses/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(expense),
+  });
 }
 
 /**
@@ -69,7 +78,9 @@ export async function updateExpenseApi(id: string, expense: UpdateExpenseDto): P
  */
 export async function deleteExpenseApi(id: string): Promise<void> {
   const api = useApi();
-  await api.delete<void>(`/api/expenses/${id}`);
+  await api.request<void>(`/api/expenses/${id}`, {
+    method: 'DELETE',
+  });
 }
 
 /**
@@ -80,7 +91,10 @@ export async function createChildExpenseApi(
   expense: CreateExpenseDto
 ): Promise<Expense> {
   const api = useApi();
-  return await api.post<Expense>(`/api/expenses/${parentId}/children`, expense);
+  return await api.request<Expense>(`/api/expenses/${parentId}/children`, {
+    method: 'POST',
+    body: JSON.stringify(expense),
+  });
 }
 
 /**
@@ -88,5 +102,6 @@ export async function createChildExpenseApi(
  */
 export async function getExpenseWithChildrenApi(id: string): Promise<Expense> {
   const api = useApi();
-  return await api.get<Expense>(`/api/expenses/${id}/with-children`);
+  return await api.request<Expense>(`/api/expenses/${id}/with-children`, {
+  });
 }

@@ -4,7 +4,7 @@
  * API functions for fetching exchange rates.
  */
 
-import { useApi } from '../../../shared/api/base';
+import useApi from '../../../shared/api/base';
 import type { ExchangeRate, Currency } from '../../../shared/types';
 
 /**
@@ -12,9 +12,12 @@ import type { ExchangeRate, Currency } from '../../../shared/types';
  */
 export async function getRateForDate(currency: Currency, date: string): Promise<ExchangeRate> {
   const api = useApi();
-  const params = new URLSearchParams();
-  params.append('currency', currency);
-  params.append('date', date);
-
-  return await api.get<ExchangeRate>(`/api/exchange-rates?${params.toString()}`);
+  return await api.request<ExchangeRate>(`/api/exchange-rates`, {
+    method: 'GET',
+    params: {
+        currency: currency.toString(),
+        date: new Date(date).toISOString(),
+      },
+    } as unknown as RequestInit,
+  );
 }
